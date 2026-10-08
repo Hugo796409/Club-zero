@@ -1,0 +1,34 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+const elements=new Map();const listeners={};const memory=new Map();
+const el=()=>({innerHTML:'',textContent:'',open:false,classList:{add(){},remove(){}},showModal(){this.open=true;},close(){this.open=false;},focus(){}});
+globalThis.document={querySelector(s){if(!elements.has(s))elements.set(s,el());return elements.get(s);},addEventListener(k,fn){listeners[k]=fn;}};
+globalThis.localStorage={getItem:k=>memory.get(k)||null,setItem:(k,v)=>memory.set(k,v)};
+globalThis.window={scrollTo(){}};
+globalThis.matchMedia=()=>({matches:true});
+const click=dataset=>listeners.click({target:{closest:()=>({dataset,disabled:false})}});
+const state=()=>JSON.parse(memory.get('zero-club-v1'));
+await import('../dist/app.js');
+test('parcours : setup, sol x2, annulation, reprise, classement et historique',()=>{
+ assert.match(elements.get('#app').innerHTML,/On se fait une partie/);
+ click({action:'start'});assert.equal(state().game.players.length,2);
+ click({hit:'20'});click({hit:'1'});click({kind:'ground'});
+ assert.equal(state().game.pendingChallenge.repetitions,42);
+ assert.match(elements.get('#modal').innerHTML,/Défi doublé/);
+ click({action:'finish-challenge'});click({action:'next'});assert.equal(state().game.current,1);
+ click({action:'undo'});assert.equal(state().game.current,0);assert.equal(state().game.darts.length,3);
+ click({action:'undo'});assert.equal(state().game.darts.length,2);
+ click({view:'ranking'});assert.match(elements.get('#app').innerHTML,/Le trône est libre/);
+ click({view:'history'});assert.match(elements.get('#app').innerHTML,/Tout reste à jouer/);
+ click({view:'game'});assert.match(elements.get('#app').innerHTML,/Au sol/);
+});
+test('partie gagnée, historique unique et annulation de victoire',()=>{
+ click({action:'new'});click({action:'abandon'});click({target:'150'});click({action:'start'});
+ click({multi:'3'});click({hit:'20'});click({multi:'3'});click({hit:'20'});click({multi:'3'});click({hit:'10'});
+ assert.equal(state().history.length,1);assert.ok(state().game.winner);assert.match(elements.get('#modal').innerHTML,/VICTOIRE/);
+ click({view:'ranking'});assert.match(elements.get('#app').innerHTML,/Joueur 1/);
+ click({action:'undo-win'});assert.equal(state().history.length,0);assert.equal(state().game.winner,null);assert.equal(state().game.players[0].score,120);
+ click({view:'game'});click({multi:'3'});click({hit:'10'});assert.equal(state().history.length,1);
+ click({action:'close'});click({view:'history'});click({history:state().history[0].id});assert.match(elements.get('#modal').innerHTML,/Le récap/);
+ click({action:'rematch'});assert.equal(state().history.length,1);assert.equal(state().game.players[0].score,0);
+});

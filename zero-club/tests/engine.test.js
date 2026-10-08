@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createGame,throwDart,nextTurn,leaderboard} from '../dist/engine.js';
+const config={enabled:true,exercise:'Pompes',multiplier:1,cap:0};
+const fresh=(target=321)=>createGame([{id:'a',name:'Alice'},{id:'b',name:'Bob'},{id:'c',name:'Camille'}],target,config);
+const hit=(g,base,multiplier=1)=>throwDart(g,{base,multiplier}).game;
+test('65 atteint à la deuxième fléchette remet les adversaires à zéro',()=>{let g=fresh();g.players[1].score=65;g.players[2].score=65;g=hit(g,20,3);assert.equal(g.players[1].score,65);g=hit(g,5);assert.equal(g.players[0].score,65);assert.equal(g.players[1].score,0);assert.equal(g.players[2].score,0);assert.equal(g.players[0].kills,2);});
+test('collision après la première ou troisième fléchette',()=>{for(const slot of [1,3]){let g=fresh();g.players[1].score=20;for(let i=1;i<slot;i++)g=throwDart(g,{kind:'miss'}).game;g=hit(g,20);assert.equal(g.players[1].score,0);}});
+test('dépassement 318 + 15 = 303 puis suite de la volée',()=>{let g=fresh();g.players[0].score=318;g=hit(g,15);assert.equal(g.players[0].score,303);g=hit(g,18);assert.equal(g.winner,'a');});
+test('collision après soustraction',()=>{let g=fresh();g.players[0].score=318;g.players[1].score=303;g=hit(g,15);assert.equal(g.players[1].score,0);});
+test('victoire exacte sur chacun des trois modes, sans double obligatoire',()=>{for(const n of [150,321,501]){let g=fresh(n);g.players[0].score=n-1;g=hit(g,1);assert.equal(g.winner,'a');assert.throws(()=>hit(g,1));}});
+test('21 points : bordure 21 répétitions, sol 42 répétitions',()=>{for(const kind of ['rim','ground']){let g=hit(hit(fresh(),20),1);g=throwDart(g,{kind}).game;assert.equal(g.pendingChallenge.repetitions,kind==='ground'?42:21);assert.equal(g.players[0].score,21);assert.throws(()=>nextTurn(g));g.pendingChallenge=null;g=nextTurn(g);assert.equal(g.turnPoints,0);assert.equal(g.current,1);}});
+test('défi nul sans points, désactivé, répétition et plafond',()=>{let g=throwDart(fresh(),{kind:'ground'}).game;assert.equal(g.pendingChallenge.repetitions,0);g=fresh();g.challenge.enabled=false;g=throwDart(g,{kind:'ground'}).game;assert.equal(g.pendingChallenge,null);g=hit(fresh(),20);g=throwDart(g,{kind:'rim'}).game;g.pendingChallenge=null;g=throwDart(g,{kind:'ground'}).game;assert.equal(g.pendingChallenge.repetitions,40);g=hit(fresh(),20);g.challenge.cap=25;g=throwDart(g,{kind:'ground'}).game;assert.equal(g.pendingChallenge.repetitions,25);});
+test('intensité 0,5 : sol = deux fois la bordure après arrondi',()=>{let g=hit(fresh(),3);g.challenge.multiplier=.5;assert.equal(throwDart(g,{kind:'rim'}).game.pendingChallenge.repetitions,2);assert.equal(throwDart(g,{kind:'ground'}).game.pendingChallenge.repetitions,4);});
+test('un raté ne déclenche ni collision ni défi',()=>{let g=fresh();g.players[0].score=20;g.players[1].score=20;g=throwDart(g,{kind:'miss'}).game;assert.equal(g.players[1].score,20);assert.equal(g.pendingChallenge,null);});
+test('triple bull, 65 en un lancer et quatrième fléchette interdits',()=>{assert.throws(()=>hit(fresh(),25,3));assert.throws(()=>hit(fresh(),65));let g=fresh();for(let i=0;i<3;i++)g=hit(g,1);assert.throws(()=>hit(g,1));});
+test('état initial préservé et cycle des joueurs',()=>{const original=fresh();let g=hit(original,20);assert.equal(original.players[0].score,0);for(let j=0;j<3;j++){while(g.darts.length<3)g=throwDart(g,{kind:'miss'}).game;g=nextTurn(g);}assert.equal(g.round,2);assert.equal(g.current,0);});
+test('classement victoires puis remises à zéro',()=>{const g=fresh();g.winner='b';g.players[1].kills=2;const rows=leaderboard(g.players,[g]);assert.equal(rows[0].id,'b');assert.equal(rows[0].wins,1);assert.equal(rows[0].kills,2);});
